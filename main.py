@@ -22,9 +22,15 @@ class WatchfulEye(discord.Client):
         
         self.user_stats.add_message(message)
 
+    
+    async def analyze_channel(self, channel: discord.TextChannel):
+        async for msg in channel.history(limit=None):
+            self.user_stats.add_message(msg)
+
     async def on_ready(self):
         self.tree.copy_global_to(guild=discord.Object(776251117616234506))
 
+        await self.analyze_channel(await self.fetch_channel(776251117616234509))
         await self.tree.sync()
 
         await self.change_presence(activity=discord.Activity(type=discord.ActivityType.watching, name='Group Chat Extended'))
@@ -135,5 +141,5 @@ if __name__ == '__main__':
 
     client.set_tree(tree)
 
-    client.run(os.environ.get("WATCHFULEYE"))
+    client.run(os.environ.get("WATCHFULEYETEST"))
 
