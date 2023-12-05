@@ -30,7 +30,7 @@ class WatchfulEye(discord.Client):
 
     
     async def analyze_channel(self, channel: discord.TextChannel):
-        async for msg in channel.history(limit=None):
+        async for msg in channel.history(limit=None, before=1179956903980322837):
             self.user_stats.add_message(await MessageData.from_message(msg), msg.author.id)
 
 
