@@ -18,25 +18,29 @@ class WatchfulEye(discord.Client):
         self.tree = tree
         self.can_start = True
 
+    async def handle_command(self, message: discord.Message):
+        if message.content.startswith("!messages"):
+            await message.channel.send(f"Currently stored {len(self.user_stats.tracked_messages)} messages from {len(self.user_stats.users)} users.", reference=message)
+
     async def on_message(self, message: discord.Message):
-        
-        self.user_stats.add_message(message)
+
+        if  message.content.startswith("!"): await self.handle_command(message)
+
+        self.user_stats.add_message(await MessageData.from_message(message), message.author.id)
 
     
     async def analyze_channel(self, channel: discord.TextChannel):
         async for msg in channel.history(limit=None):
-            self.user_stats.add_message(msg)
+            self.user_stats.add_message(await MessageData.from_message(msg), msg.author.id)
+
 
     async def on_ready(self):
         self.tree.copy_global_to(guild=discord.Object(776251117616234506))
 
-        await self.analyze_channel(await self.fetch_channel(776251117616234509))
+        await self.analyze_channel(await self.fetch_channel(1148075747118960774))
         await self.tree.sync()
 
         await self.change_presence(activity=discord.Activity(type=discord.ActivityType.watching, name='Group Chat Extended'))
-
-
-        print('Logged in as', self.user)
 
 class UserStats:
     
@@ -45,12 +49,10 @@ class UserStats:
         # sorted list
         self.tracked_messages = tracked_messages
         self.users = users
-        print(self.users)
 
-    def add_message(self, msg: discord.Message):
-        data = MessageData.from_message(msg)
+    def add_message(self, data, author_id):
         if self.__binary_tree_insert(data.id):
-            self.add_message_to_user(msg.author.id, data)
+            self.add_message_to_user(author_id, data)
             self.save()
 
 
@@ -63,10 +65,9 @@ class UserStats:
 
     def save(self):
         j = json.dumps(self.into_json(), indent=4)
-        open('userstats.json', 'w').write(j)
+        open('userstats.json', 'w', encoding='utf-8').write(j)
     
     def __binary_tree_insert(self, id):
-        # O(n)
         l,h=0,len(self.tracked_messages)
         while h > (m:=(l+h)//2) >= l:
             oid = self.tracked_messages[m]
@@ -74,7 +75,12 @@ class UserStats:
             elif id<oid:h=m-1
             else: return False
 
-        self.tracked_messages.insert(m, id)
+        if m==len(self.tracked_messages):
+            self.tracked_messages.append(id)
+        elif self.tracked_messages[m] > id:
+            self.tracked_messages.insert(m, id)
+        else:
+            self.tracked_messages.insert(m+1, id)
         return True
 
     @classmethod
@@ -109,37 +115,53 @@ class UserProfile:
         return UserProfile(l)
     
     def into_json(self):
-        return {'messages': [m.into_json() for m in self.messages]}
+        return {'messages': list(map(MessageData.into_json, self.messages))}
 
 class MessageData:
 
-    def __init__(self, id, content, attch_links, channel_id=None):
+    def __init__(self, id, content, attch_links, reactions, channel_id=None):
         self.id = id
         self.content = content
         self.attch_links = attch_links
         self.channel_id = channel_id
+        self.reactions = reactions
 
     @classmethod
     def from_json(cls, obj):
-        return MessageData(int(obj['id']), obj['content'], obj['attachment_links'], int(obj['channel_id']))
+        return MessageData(int(obj['id']), obj['content'], obj['attachment_links'], list(map(ReactionData.from_json, obj['reactions'])), int(obj['channel_id']))
     
     @classmethod
-    def from_message(cls, msg: discord.Message):
-        return MessageData(msg.id, msg.content, [a.url for a in msg.attachments], msg.channel.id)
+    async def from_message(cls, msg: discord.Message):
+        return MessageData(msg.id, msg.content, [a.url for a in msg.attachments], [await ReactionData.from_reaction(reaction) for reaction in msg.reactions], msg.channel.id)
     
     def into_json(self):
-        return {'id': str(self.id), 'content': self.content, 'attachment_links': self.attch_links, 'channel_id': str(self.channel_id)}
+        return {'id': str(self.id), 'content': self.content, 'attachment_links': self.attch_links, 'channel_id': str(self.channel_id), 'reactions': list(map(ReactionData.into_json, self.reactions))}
     
+class ReactionData:
 
+    def __init__(self, emoji, users):
+        self.emoji = emoji
+        self.users = users
 
+    @classmethod
+    async def from_reaction(cls, reaction: discord.Reaction):
+        return ReactionData(reaction.emoji,  [user.id async for user in reaction.users()])
+
+    @classmethod
+    def from_json(cls, obj):
+        return ReactionData(obj['emoji'], list(map(int, obj['users'])))
+    
+    def into_json(self):
+        return {'emoji': self.emoji, 'users': self.users}
+    
 if __name__ == '__main__':
     intents = discord.Intents.default()
     intents.message_content = True
-    u = UserStats.from_json(json.loads(open('userstats.json', 'r').read()))
+    u = UserStats.from_json(json.loads(open('userstats.json', 'r', encoding='utf-8').read()))
     client = WatchfulEye(u, intents=intents)
     tree = discord.app_commands.CommandTree(client)
 
     client.set_tree(tree)
 
-    client.run(os.environ.get("WATCHFULEYETEST"))
+    client.run(os.environ.get("WATCHFULEYE"))
 
