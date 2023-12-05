@@ -135,5 +135,5 @@ if __name__ == '__main__':
 
     client.set_tree(tree)
 
-    client.run(os.environ.get("WATCHFULEYETEST"))
+    client.run(os.environ.get("WATCHFULEYE"))
 
