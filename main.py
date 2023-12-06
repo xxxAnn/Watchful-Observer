@@ -30,8 +30,12 @@ class WatchfulEye(discord.Client):
 
     
     async def analyze_channel(self, channel: discord.TextChannel):
-        async for msg in channel.history(limit=None, before=1179956903980322837):
-            self.user_stats.add_message(await MessageData.from_message(msg), msg.author.id)
+        i = 0
+        async for msg in channel.history(limit=None, before=discord.Object(self.user_stats.tracked_messages[0])):
+            self.user_stats._raw_on_message(await MessageData.from_message(msg), msg.author.id)
+            i = (i+1) % 100
+            if i == 1:
+                self.user_stats.save()
 
 
     async def on_ready(self):
@@ -50,9 +54,14 @@ class UserStats:
         self.tracked_messages = tracked_messages
         self.users = users
 
-    def add_message(self, data, author_id):
+    def _raw_on_message(self, data, author_id):
         if self.__binary_tree_insert(data.id):
             self.add_message_to_user(author_id, data)
+            return True
+        return False
+
+    def add_message(self, data, author_id):
+        if self._raw_on_message(data, author_id):
             self.save()
 
 
@@ -145,7 +154,7 @@ class ReactionData:
 
     @classmethod
     async def from_reaction(cls, reaction: discord.Reaction):
-        return ReactionData(reaction.emoji,  [user.id async for user in reaction.users()])
+        return ReactionData(str(reaction.emoji),  [user.id async for user in reaction.users()])
 
     @classmethod
     def from_json(cls, obj):
